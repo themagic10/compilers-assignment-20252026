@@ -158,6 +158,7 @@ struct StrenghtReduction : PassInfoMixin<StrenghtReduction> {
 
           break;
         }
+        // TODO finish this and test
         case (Instruction::SDiv): {
         }
         default:
