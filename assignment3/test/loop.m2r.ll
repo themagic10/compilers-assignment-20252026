@@ -9,24 +9,26 @@ target triple = "x86_64-pc-linux-gnu"
 define dso_local i32 @loop(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
   br label %4
 
-4:                                                ; preds = %11, %3
-  %.0 = phi i32 [ %0, %3 ], [ %12, %11 ]
-  %5 = icmp slt i32 %.0, %1
-  br i1 %5, label %6, label %13
+4:                                                ; preds = %12, %3
+  %.01 = phi i32 [ %0, %3 ], [ %13, %12 ]
+  %.0 = phi i32 [ 0, %3 ], [ %10, %12 ]
+  %5 = icmp slt i32 %.01, %1
+  br i1 %5, label %6, label %14
 
 6:                                                ; preds = %4
   %7 = add nsw i32 4, %0
   %8 = mul nsw i32 %7, %2
   %9 = add nsw i32 %8, 5
-  %10 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %9)
-  br label %11
+  %10 = add nsw i32 %.0, %.01
+  %11 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %9)
+  br label %12
 
-11:                                               ; preds = %6
-  %12 = add nsw i32 %.0, 1
+12:                                               ; preds = %6
+  %13 = add nsw i32 %.01, 1
   br label %4, !llvm.loop !6
 
-13:                                               ; preds = %4
-  ret i32 0
+14:                                               ; preds = %4
+  ret i32 %.0
 }
 
 declare i32 @printf(ptr noundef, ...) #1

@@ -12,21 +12,23 @@ define dso_local i32 @loop(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
   %6 = add nsw i32 %5, 5
   br label %7
 
-7:                                                ; preds = %11, %3
-  %.0 = phi i32 [ %0, %3 ], [ %12, %11 ]
-  %8 = icmp slt i32 %.0, %1
-  br i1 %8, label %9, label %13
+7:                                                ; preds = %12, %3
+  %.01 = phi i32 [ %0, %3 ], [ %13, %12 ]
+  %.0 = phi i32 [ 0, %3 ], [ %10, %12 ]
+  %8 = icmp slt i32 %.01, %1
+  br i1 %8, label %9, label %14
 
 9:                                                ; preds = %7
-  %10 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %6)
-  br label %11
+  %10 = add nsw i32 %.0, %.01
+  %11 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %6)
+  br label %12
 
-11:                                               ; preds = %9
-  %12 = add nsw i32 %.0, 1
+12:                                               ; preds = %9
+  %13 = add nsw i32 %.01, 1
   br label %7, !llvm.loop !6
 
-13:                                               ; preds = %7
-  ret i32 0
+14:                                               ; preds = %7
+  ret i32 %.0
 }
 
 declare i32 @printf(ptr noundef, ...) #1

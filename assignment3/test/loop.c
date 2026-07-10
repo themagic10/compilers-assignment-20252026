@@ -8,6 +8,7 @@ int loop(int a, int b, int c) {
       int x = 4+a;
     int k = x*c;
     int k2 = k + 5;
+    ret +=i;
     printf("%d", k2);
   }
 

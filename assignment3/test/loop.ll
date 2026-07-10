@@ -23,11 +23,11 @@ define dso_local i32 @loop(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
   store i32 %12, ptr %7, align 4
   br label %13
 
-13:                                               ; preds = %27, %3
+13:                                               ; preds = %30, %3
   %14 = load i32, ptr %7, align 4
   %15 = load i32, ptr %5, align 4
   %16 = icmp slt i32 %14, %15
-  br i1 %16, label %17, label %30
+  br i1 %16, label %17, label %33
 
 17:                                               ; preds = %13
   %18 = load i32, ptr %4, align 4
@@ -40,19 +40,23 @@ define dso_local i32 @loop(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
   %23 = load i32, ptr %10, align 4
   %24 = add nsw i32 %23, 5
   store i32 %24, ptr %11, align 4
-  %25 = load i32, ptr %11, align 4
-  %26 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %25)
-  br label %27
+  %25 = load i32, ptr %7, align 4
+  %26 = load i32, ptr %8, align 4
+  %27 = add nsw i32 %26, %25
+  store i32 %27, ptr %8, align 4
+  %28 = load i32, ptr %11, align 4
+  %29 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %28)
+  br label %30
 
-27:                                               ; preds = %17
-  %28 = load i32, ptr %7, align 4
-  %29 = add nsw i32 %28, 1
-  store i32 %29, ptr %7, align 4
+30:                                               ; preds = %17
+  %31 = load i32, ptr %7, align 4
+  %32 = add nsw i32 %31, 1
+  store i32 %32, ptr %7, align 4
   br label %13, !llvm.loop !6
 
-30:                                               ; preds = %13
-  %31 = load i32, ptr %8, align 4
-  ret i32 %31
+33:                                               ; preds = %13
+  %34 = load i32, ptr %8, align 4
+  ret i32 %34
 }
 
 declare i32 @printf(ptr noundef, ...) #1

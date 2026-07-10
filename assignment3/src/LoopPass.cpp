@@ -24,11 +24,6 @@ using namespace llvm;
 
 namespace {
 
-typedef struct invariatns {
-  Instruction *i;
-  bool isinvariant;
-} invariatns;
-
 bool IsInstructionInvariant(Instruction *i, Loop *l) {
   /*
     some notes on this:
@@ -47,8 +42,8 @@ bool IsInstructionInvariant(Instruction *i, Loop *l) {
 
     2. the isTerminator function covers jump instruction (even calls and
     returns) since they are always at the end of a bb. we assume functions to
-    NOT be loop invariant. we can use a function inlining optimization pass
-    before the loop pass to try and optimize them...
+    NOT be loop invariant. note that we can use a function inlining optimization
+    pass before the loop pass to try and optimize them...
 
     3. phi operation have to be accounted for
   */
@@ -69,9 +64,8 @@ bool IsInstructionInvariant(Instruction *i, Loop *l) {
   return true;
 }
 
-// todo: is it faster to pass the whole data structure to the subfunction?
-// todo: does it guarantee that the instruction are fetched in order?
-// todo: maybe use l->hasLoopInvariantOperands(const Instruction *I)??
+// TODO: does it guarantee that the instruction are fetched in order?
+// TODO: maybe use l->hasLoopInvariantOperands(const Instruction *I)??
 std::vector<Instruction *> GetLoopInvariantInst(Loop *l) {
   std::vector<Instruction *> r;
   for (auto bbiter : l->blocks()) {
@@ -108,29 +102,46 @@ bool doesDominateAllExits(BasicBlock *bb, Loop *l, DominatorTree &d) {
 }
 
 bool isMoveSafe(Instruction *i, Loop *l, DominatorTree &dt) {
+  /*
+
+  in order to evaluate if an instruction can be moved we have to check if:
+  1. it's loop invariant
+  2. it dominates all of its users
+  3. it dominates all of its exits or if the instruction is dead outside of the
+  loop
+
+
+  since llvm uses ssa for its virtual registers we effectively just need to
+  check condition number 3
+
+  */
   return doesDominateAllExits(i->getParent(), l, dt) || isDeadAfterLoop(i, l);
+}
+
+void RunLicm(Loop *l, DominatorTree &dt) {
+  std::vector<Instruction *> invariants = GetLoopInvariantInst(l);
+  std::vector<Instruction *> final;
+  for (auto i : invariants) {
+    if (isMoveSafe(i, l, dt)) {
+      final.push_back(i);
+    }
+  }
+  // moving...
+  BasicBlock *preheader = l->getLoopPreheader();
+  // doing this keeps the same order too
+  for (Instruction *i : final) {
+    outs() << "currently moving" << *i << "\n";
+    i->moveBefore(&*preheader->getTerminator());
+  }
 }
 
 struct AlgebraicIdentity : PassInfoMixin<AlgebraicIdentity> {
 
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM) {
     LoopInfo &li = AM.getResult<LoopAnalysis>(F);
+    DominatorTree &dt = AM.getResult<DominatorTreeAnalysis>(F);
     for (auto l : li) {
-      DominatorTree &dt = AM.getResult<DominatorTreeAnalysis>(F);
-      std::vector<Instruction *> invs = GetLoopInvariantInst(l);
-      std::vector<Instruction *> final;
-      for (auto i : invs) {
-        if (isMoveSafe(i, l, dt)) {
-          final.push_back(i);
-        }
-      }
-      // moving...
-      BasicBlock *preheader = l->getLoopPreheader();
-      // todo should be reversed
-      for (Instruction *i : final) {
-        outs() << "currently moving" << *i << "\n";
-        i->moveBefore(&*preheader->getTerminator());
-      }
+      RunLicm(l, dt);
     }
 
     return PreservedAnalyses::all();
