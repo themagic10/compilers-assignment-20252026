@@ -2,4 +2,10 @@
 
 **/build/*
 
+#felxstudio stuff
+*.aux
+*.log
+*.gz
+*.toc
+
 !.gitignore
