@@ -4,39 +4,38 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-pc-linux-gnu"
 
 ; Function Attrs: noinline nounwind sspstrong uwtable
-define dso_local void @fun(ptr noundef %0, ptr noundef %1) #0 {
-  br label %3
+define dso_local void @fun(ptr noundef %0, ptr noundef %1, i32 noundef %2) #0 {
+  br label %4
 
-3:                                                ; preds = %9, %2
-  %.02 = phi i32 [ undef, %2 ], [ %6, %9 ]
-  %.01 = phi i32 [ 0, %2 ], [ %10, %9 ]
-  %4 = icmp slt i32 %.01, 10
-  br i1 %4, label %5, label %11
+4:                                                ; preds = %10, %3
+  %.03 = phi i32 [ 15, %3 ], [ %7, %10 ]
+  %.01 = phi i32 [ 0, %3 ], [ %11, %10 ]
+  %5 = icmp slt i32 %.01, 10
+  br i1 %5, label %6, label %12
 
-5:                                                ; preds = %3
-  %6 = add nsw i32 %.02, 1
-  %7 = sext i32 %.01 to i64
-  %8 = getelementptr inbounds i32, ptr %0, i64 %7
-  store i32 3, ptr %8, align 4
-  br label %9
+6:                                                ; preds = %4
+  %7 = add nsw i32 %.03, 1
+  %8 = sext i32 %.01 to i64
+  %9 = getelementptr inbounds i32, ptr %0, i64 %8
+  store i32 3, ptr %9, align 4
+  br label %10
 
-9:                                                ; preds = %5
-  %10 = add nsw i32 %.01, 1
-  br label %3, !llvm.loop !6
+10:                                               ; preds = %6
+  %11 = add nsw i32 %.01, 1
+  br label %4, !llvm.loop !6
 
-11:                                               ; preds = %3
-  br label %12
+12:                                               ; preds = %4
+  br label %13
 
-12:                                               ; preds = %22, %11
-  %.03 = phi i32 [ 0, %11 ], [ %15, %22 ]
-  %.0 = phi i32 [ 0, %11 ], [ %23, %22 ]
-  %13 = icmp slt i32 %.0, 10
-  br i1 %13, label %14, label %24
+13:                                               ; preds = %22, %12
+  %.02 = phi i32 [ 16, %12 ], [ %16, %22 ]
+  %.0 = phi i32 [ 0, %12 ], [ %23, %22 ]
+  %14 = icmp slt i32 %.0, 10
+  br i1 %14, label %15, label %24
 
-14:                                               ; preds = %12
-  %15 = add nsw i32 %.03, 1
-  %16 = add nsw i32 %.0, 1
-  %17 = sext i32 %16 to i64
+15:                                               ; preds = %13
+  %16 = add nsw i32 %.02, 1
+  %17 = sext i32 %.0 to i64
   %18 = getelementptr inbounds i32, ptr %0, i64 %17
   %19 = load i32, ptr %18, align 4
   %20 = sext i32 %.0 to i64
@@ -44,11 +43,11 @@ define dso_local void @fun(ptr noundef %0, ptr noundef %1) #0 {
   store i32 %19, ptr %21, align 4
   br label %22
 
-22:                                               ; preds = %14
+22:                                               ; preds = %15
   %23 = add nsw i32 %.0, 1
-  br label %12, !llvm.loop !8
+  br label %13, !llvm.loop !8
 
-24:                                               ; preds = %12
+24:                                               ; preds = %13
   ret void
 }
 

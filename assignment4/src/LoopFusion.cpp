@@ -25,6 +25,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cstddef>
 #include <cstdio>
+#include <ostream>
 #include <vector>
 
 using namespace llvm;
@@ -326,7 +327,69 @@ bool canFuse(Loop *li, Loop *lj, DominatorTree &dt, PostDominatorTree &pdt,
          loopSameIteration(li, lj, se) && checkNegativity(li, lj, di, se);
 }
 
-void moveheader();
+/*
+useful rule: all phis in a block must be at the start of the block
+
+deal with the phi instructions and move all non terminator instruction in li
+header
+*/
+void moveheader(Loop *li, Loop *lj) {
+
+  // update induction variables
+  PHINode *iinduction = li->getCanonicalInductionVariable();
+  PHINode *jinduction = lj->getCanonicalInductionVariable();
+  jinduction->replaceAllUsesWith(iinduction);
+
+  // we could leave it to dce but it's annoying to deal with just below...
+  jinduction->eraseFromParent();
+
+  SmallVector<Instruction *> ljhead;
+
+  // prevents data invalidation
+  for (Instruction &i : *lj->getHeader()) {
+    ljhead.push_back(&i);
+  }
+
+  for (Instruction *i : ljhead) {
+
+    if (i->isTerminator() || isa<FCmpInst>(i) || isa<FCmpInst>(i)) {
+      continue;
+    } else if (isa<PHINode>(i)) {
+      PHINode *p = dyn_cast<PHINode>(i);
+      int num = p->getNumIncomingValues();
+      if (num > 2) {
+        // most likely impossible due to previous checks but still
+        // loop structure has been violated since the header should only have 2
+        // prevs: preheader and latch
+        errs() << "detected header with more than 2 prevs, loop structure "
+                  "violeted, aborting\n";
+        exit(1);
+      }
+
+      PHINode *newp = PHINode::Create(p->getType(), 0);
+      for (int iter = 0; iter < 2; iter++) {
+        BasicBlock *bb = p->getIncomingBlock(iter);
+        Value *v = p->getIncomingValue(iter);
+        if (lj->contains(bb)) {
+          // should be an induction variable but you never know
+          newp->addIncoming(v, li->getLoopLatch());
+        } else {
+          newp->addIncoming(v, li->getLoopPreheader());
+        }
+      }
+      newp->insertBefore(li->getHeader()->getFirstInsertionPt());
+      outs() << *li->getHeader()->getTerminator();
+      p->replaceAllUsesWith(newp);
+      outs() << *li->getHeader()->getTerminator();
+    } else { // non phi instructions
+      i->moveBefore(li->getHeader()->getTerminator());
+    }
+  }
+  outs() << "\nfinal header:\n";
+  for (Instruction &x : *li->getHeader()) {
+    outs() << x << "\n";
+  }
+}
 
 /*
 moves all the body nodes from loop j to i
@@ -339,13 +402,16 @@ note that this assumes that j body tree starts with just 1 node
 NOTE THAT THIS WILL CRASH IF WE FIND A NON BRANCH TERMINATOR
 (this should not happen but it's possible)
 */
-void movebody(Loop *li, Loop *lj) {
+void movebody(Loop *li, Loop *lj, LoopInfo &ll) {
   BasicBlock *ilatch = li->getLoopLatch();
   BasicBlock *jlatch = lj->getLoopLatch();
 
+  // avoids invalidation
+  SmallVector<BasicBlock *> iprevs = to_vector(predecessors(ilatch));
+
   // we first update the first loop latch's prev to point to the start of the
   // second loop's body
-  for (auto bb : predecessors(ilatch)) {
+  for (auto bb : iprevs) {
     if (bb == li->getHeader()) {
       // most likely redundant, if this edge were to exist then it should be an
       // inner loop... can't hurt to check
@@ -366,13 +432,23 @@ void movebody(Loop *li, Loop *lj) {
     i->getNumSuccessors();
     for (int n = 0; n < i->getNumSuccessors(); n++) {
       if (i->getSuccessor(n) == ilatch) {
-        i->setSuccessor(n, lj->getHeader());
+        // we need to find the start of lj body
+        BasicBlock *bodystart;
+        for (auto possibletarget : successors(lj->getHeader())) {
+          if (lj->contains(possibletarget)) {
+            bodystart = possibletarget;
+          }
+        }
+
+        i->setSuccessor(n, bodystart);
       }
     }
   }
 
+  SmallVector<BasicBlock *> jprev = to_vector(predecessors(jlatch));
+
   // set the second loop latch's prev to point to the first loop latch
-  for (auto bb : predecessors(jlatch)) {
+  for (auto bb : jprev) {
     if (bb == lj->getHeader()) {
       continue;
     }
@@ -388,29 +464,50 @@ void movebody(Loop *li, Loop *lj) {
         i->setSuccessor(n, ilatch);
       }
     }
+    // if we don't add this then li won't know it contains bb and more
+    // importantly li will think it has multiple exiting block which will break
+    // everything
+    li->addBasicBlockToLoop(bb, ll);
   }
 }
 
-void setnewexit(Loop *li, Loop *lj) {
+void setnewexit(Loop *li, BasicBlock *ljexit) {
   BasicBlock *exiting = li->getExitingBlock();
   BranchInst *i = dyn_cast<BranchInst>(exiting->getTerminator());
+  outs() << "starting exit branch is " << *i << "\n";
   if (i == nullptr) {
     errs() << "expected branch on loop exit not found, aborting\n";
     exit(1);
   }
-  for (int n = 0; n < i->getNumSuccessors(); n++) {
+  for (int n = 0; n < 2; n++) {
     if (!li->contains(i->getSuccessor(n))) {
-      i->setSuccessor(n, lj->getExitBlock());
+      i->setSuccessor(n, ljexit);
+    }
+  }
+  outs() << "\n final update branch is: " << *i << "\n";
+}
+
+void updateGuard(Loop *li, BasicBlock *jexit) {
+  BranchInst *bints = li->getLoopGuardBranch();
+  for (int i = 0; i < 2; i++) {
+    if (!li->contains(bints->getSuccessor(i))) {
+      bints->setSuccessor(i, jexit);
     }
   }
 }
 
 // loops are assumed to be in simple form and to not be mixed guarded
-void executeFusion(Loop *li, Loop *lj) {
-  bool guarded = false;
+void executeFusion(Loop *li, Loop *lj, LoopInfo &ll) {
+  BasicBlock *ljexit = lj->getExitBlock();
   if (li->isGuarded() && lj->isGuarded()) {
-    guarded = true;
+    updateGuard(li, lj->getExitBlock());
   }
+  moveheader(li, lj);
+  outs() << "moved header!\n";
+  movebody(li, lj, ll);
+  outs() << "moved body!\n";
+  setnewexit(li, ljexit);
+  outs() << "set new exit!\n";
 }
 
 void purgePairs(std::vector<LoopPair> &pairs, Loop *li, Loop *lj) {
@@ -423,9 +520,8 @@ void purgePairs(std::vector<LoopPair> &pairs, Loop *li, Loop *lj) {
 }
 
 bool startingLoopCheck(Loop *l) {
-
   return l->isLoopSimplifyForm() && l->isInnermost() &&
-         (l->getExitBlock() != nullptr);
+         (l->getExitingBlock() != nullptr);
 }
 
 // TODO: we could add switch statements to point 6
@@ -466,7 +562,7 @@ void runLoopFusion(Function &F, FunctionAnalysisManager &AM) {
 
     if (canFuse(lp.li, lp.lj, dt, pdt, se, di)) {
       outs() << "LOOP FUSION CANDIDATE FOUND\n";
-      executeFusion(lp.li, lp.lj);
+      executeFusion(lp.li, lp.lj, li);
     }
     purgePairs(pairs, lp.li, lp.lj);
   }
