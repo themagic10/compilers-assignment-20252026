@@ -10,12 +10,13 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 #include <math.h>
 #include <sys/types.h>
 #include <vector>
 
-#define MAXSUM 64
+#define MAXSUM 64 // effectively disable maxsum
 
 using namespace llvm;
 
@@ -56,6 +57,7 @@ arbitrarily choose to use the lower power
 
 */
 reduction evaluate_reduction(reduction r, int val) {
+
   if (val == 0) {
     return r;
   } else if (val == 1) {
@@ -72,20 +74,24 @@ reduction evaluate_reduction(reduction r, int val) {
 
     int upper_pow = ceil(log2(val));
     int lower_pow = floor(log2(val));
+
+    // val = 2^pow scenario
     if (upper_pow == lower_pow) {
       shift s;
       s.value = upper_pow;
-      s.op = TERMINATOR;
+      s.op = TERMINATOR; // kinda useless..
       r.shifts.push_back(s);
+      return r;
     }
 
-    int upper_diff = abs(2 ^ upper_pow - val);
-    int lower_diff = abs(2 ^ lower_pow - val);
+    int upper_diff = abs(pow(2, upper_pow) - val);
+    int lower_diff = abs(pow(2, lower_pow) - val);
+
     shift s;
     int power, target;
     if (lower_diff <= upper_diff) {
       s.op = ADDITION;
-      power = upper_pow;
+      power = lower_pow;
       target = lower_diff;
     } else {
       s.op = SUBTRACTION;
@@ -98,6 +104,20 @@ reduction evaluate_reduction(reduction r, int val) {
     // TODO: we should pass r by reference, not by copy, it's a waste of time...
     return evaluate_reduction(r, target);
   }
+}
+
+// debug
+void printReduction(reduction r) {
+  outs() << "printing reduction: \n";
+  if (r.istooexpensive) {
+    outs() << "reduction is too expensive!\n";
+    return;
+  }
+  for (shift elem : r.shifts) {
+    outs() << elem.value << " " << elem.op << "\n";
+  }
+  outs() << "addition? ";
+  outs() << r.addition << "\ndone\n";
 }
 
 // do note that we do not care about <constant> x <constant> scenarios
@@ -149,6 +169,7 @@ void MultiplicationReduction(Instruction *i) {
 
   if (val != 1 || val != 0) { // x*0 and x*1 are algebriac identity
     reduction res = evaluate_reduction({{}, 0}, val);
+    printReduction(res);
     if (res.istooexpensive) {
       return;
     }
@@ -206,7 +227,7 @@ void MultiplicationReduction(Instruction *i) {
   }
 }
 
-void UnsignedDivisionReduction(Instruction *i) {
+void DivisionReduction(Instruction *i, bool issigned) {
   Value *op0 = i->getOperand(0);
   Value *op1 = i->getOperand(1);
   uint64_t val = 0;
@@ -230,7 +251,12 @@ void UnsignedDivisionReduction(Instruction *i) {
   Value *c =
       ConstantInt::get(Type::getInt32Ty(i->getFunction()->getContext()), lg);
   // logical cause it's unsigned division
-  Instruction *newinstr = BinaryOperator::Create(Instruction::LShr, op1, c);
+  Instruction *newinstr;
+  if (issigned) {
+    newinstr = BinaryOperator::Create(Instruction::AShr, op1, c);
+  } else {
+    newinstr = BinaryOperator::Create(Instruction::LShr, op1, c);
+  }
 
   i->replaceAllUsesWith(newinstr);
   newinstr->insertAfter(i);
@@ -249,10 +275,10 @@ struct StrenghtReduction : PassInfoMixin<StrenghtReduction> {
           MultiplicationReduction(&*institer);
           break;
         case (Instruction::UDiv):
-          UnsignedDivisionReduction(&*institer);
+          DivisionReduction(&*institer, false);
           break;
-        // TODO finish this and test
         case (Instruction::SDiv): {
+          DivisionReduction(&*institer, true);
         }
         default:
           break;
