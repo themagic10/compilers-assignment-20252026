@@ -1,9 +1,11 @@
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/DependenceAnalysis.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/ReachingDefAnalysis.h"
 #include "llvm/IR/BasicBlock.h"
@@ -206,7 +208,88 @@ bool loopSameIteration(Loop *li, Loop *lj, ScalarEvolution &se) {
   return false;
 }
 
-bool checkNegativity() { return true; }
+/*
+  true value is returned if there is no negative dependency
+*/
+bool checkNegativity(Loop *li, Loop *lj, DependenceInfo &di,
+                     ScalarEvolution &se) {
+
+  std::vector<Instruction *> iwrite, jread;
+
+  for (BasicBlock *bbi : li->blocks()) {
+    for (Instruction &iinst : *bbi) {
+      if (isa<StoreInst>(iinst)) {
+        iwrite.push_back(&iinst);
+      }
+    }
+  }
+
+  for (BasicBlock *bbj : lj->blocks()) {
+    for (Instruction &jinst : *bbj) {
+      if (isa<LoadInst>(jinst)) {
+        jread.push_back(&jinst);
+      }
+    }
+  }
+
+  // no r/w to memory = no problems
+  if (iwrite.empty() || jread.empty()) {
+    return true;
+  }
+
+  // could have probably been one single double loop...
+  for (auto iinst : iwrite) {
+    for (auto jinst : jread) {
+
+      // first check for dependency
+      auto dep = di.depends(iinst, jinst, true);
+      if (!dep) {
+        continue;
+      }
+
+      Value *storepointer = getLoadStorePointerOperand(iinst);
+      Value *loadpointer = getLoadStorePointerOperand(jinst);
+
+      const SCEV *storescev = se.getSCEVAtScope(storepointer, li);
+      const SCEV *loadscev = se.getSCEVAtScope(loadpointer, lj);
+
+      if (isa<SCEVCouldNotCompute>(storescev) ||
+          isa<SCEVCouldNotCompute>(loadscev)) {
+        return false;
+      }
+
+      // we need to rewrite the store instruction in order to match it with the
+      // load
+      const SCEVAddRecExpr *storeaddrec = dyn_cast<SCEVAddRecExpr>(storescev);
+
+      // required since the operands gives an arrayref, not a vector
+      SmallVector<const SCEV *> ops = to_vector(storeaddrec->operands());
+      const SCEV *storerewritten = se.getAddRecExpr(ops, lj, SCEV::FlagAnyWrap);
+
+      // names from minusScev documenation, it's a "subtraction" after all
+      // note: apparently it actually does lhs + rhs*-1
+      // returns scevcouldnotcompute if they don't have the same base.
+      const SCEV *minusscev = se.getMinusSCEV(storerewritten, loadscev);
+
+      // probably redundant since we have the dependency check..
+      // minusscev should be not compute only on different bases..
+      if (isa<SCEVCouldNotCompute>(minusscev)) {
+        outs() << "minus scev is undefined";
+        return false;
+      }
+
+      // since we found a dependency we must evaluate the known negative as
+      // false, otherwise we risk producing an invalid fusion
+      if (se.isKnownNonNegative(minusscev)) {
+        continue;
+      } else {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
 
 std::vector<LoopPair> makePairs(std::vector<Loop *> loops) {
   std::vector<LoopPair> ret;
@@ -224,7 +307,7 @@ std::vector<LoopPair> makePairs(std::vector<Loop *> loops) {
 // will return false if the second loop header as more than 1 node inside the
 // loop since we can't say where the tree of bodies should start
 bool canFuse(Loop *li, Loop *lj, DominatorTree &dt, PostDominatorTree &pdt,
-             ScalarEvolution &se) {
+             ScalarEvolution &se, DependenceInfo &di) {
   int n = 0;
   for (auto bb : successors(lj->getHeader())) {
     if (lj->contains(bb)) {
@@ -235,10 +318,12 @@ bool canFuse(Loop *li, Loop *lj, DominatorTree &dt, PostDominatorTree &pdt,
     outs() << "too many exits node\n";
     return false;
   }
-  outs() << areLoopAdjacent(li, lj) << areLoopCfgEquivalent(li, lj, dt, pdt)
-         << loopSameIteration(li, lj, se) << checkNegativity() << "\n";
+  outs() << "conditions: " << areLoopAdjacent(li, lj)
+         << areLoopCfgEquivalent(li, lj, dt, pdt)
+         << loopSameIteration(li, lj, se) << checkNegativity(li, lj, di, se)
+         << "\n";
   return areLoopAdjacent(li, lj) && areLoopCfgEquivalent(li, lj, dt, pdt) &&
-         loopSameIteration(li, lj, se) && checkNegativity();
+         loopSameIteration(li, lj, se) && checkNegativity(li, lj, di, se);
 }
 
 void moveheader();
@@ -361,6 +446,7 @@ void runLoopFusion(Function &F, FunctionAnalysisManager &AM) {
   DominatorTree &dt = AM.getResult<DominatorTreeAnalysis>(F);
   PostDominatorTree &pdt = AM.getResult<PostDominatorTreeAnalysis>(F);
   ScalarEvolution &se = AM.getResult<ScalarEvolutionAnalysis>(F);
+  DependenceInfo &di = AM.getResult<DependenceAnalysis>(F);
 
   std::vector<Loop *> loops;
   for (Loop *topl : li) {
@@ -378,7 +464,7 @@ void runLoopFusion(Function &F, FunctionAnalysisManager &AM) {
     outs() << "now testing: " << *lp.li->getHeader()->begin() << " "
            << *lp.lj->getHeader()->begin() << "\n";
 
-    if (canFuse(lp.li, lp.lj, dt, pdt, se)) {
+    if (canFuse(lp.li, lp.lj, dt, pdt, se, di)) {
       outs() << "LOOP FUSION CANDIDATE FOUND\n";
       executeFusion(lp.li, lp.lj);
     }
