@@ -21,9 +21,8 @@ define dso_local void @foo(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
   %13 = add i32 %12, 5
   store i32 %13, ptr %8, align 4
   %14 = load i32, ptr %8, align 4
-  %15 = load i32, ptr %7, align 4
-  %16 = add i32 %14, %15
-  store i32 %16, ptr %9, align 4
+  %15 = sub i32 %14, 10
+  store i32 %15, ptr %9, align 4
   ret void
 }
 

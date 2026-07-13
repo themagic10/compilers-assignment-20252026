@@ -1,0 +1,66 @@
+\documentclass{article}
+\usepackage{tabularx}
+\begin{document}
+	\begin{titlepage}
+		\title{Compilers Assignment 2}
+		\author{Stefano Casolari 187572}
+		\maketitle
+	\end{titlepage}
+	\tableofcontents
+	\newpage
+	\section{Very Busy Expression}
+	\subsection{Definition}
+	An expression is considered to be \textbf{very busy} in a specific instance \textit{p} when said expression is evaluated on all path from p to the exit node without having its operands redefined along the way.
+	\subsection{Data Flow Analysis}
+	Backwards flow analysis proves efficient here. We need to use 
+	\newline\newline
+	
+	\begin{math}
+	In(B)=f(Out(B))\newline
+	In(B)=Use(B)U(Out(B)-Def(B))
+	\newline\newline
+	Out(B)=\wedge In(S(B))\newline
+	\wedge = \cap	
+	\end{math}\newline\newline
+	\begin{tabularx}{1.2\textwidth} { 
+			| >{\raggedright\arraybackslash}X 
+			| >{\centering\arraybackslash}X 
+			| >{\raggedleft\arraybackslash}X | }
+		\hline
+		Domain & Set of all expressions  \\
+		\hline
+		Direction & Backwards\newline $In(B)=f(Out(B))$\newline $Out(B)=\wedge In(Succ(B))$  \\
+		\hline
+		Transfer function & $In(B)=Use(B)U(Out(B)-Def(B))$  \\
+		\hline
+		Meet operation & $\cap$  \\
+		\hline
+		Boundary Condition & $In(Exit)=\emptyset$  \\
+		\hline
+		Initial Interior Points & $In(B)=U$  \\
+		\hline
+	\end{tabularx}
+	\section{Dominator Analysis}
+	\subsection{Definition}
+	We say that a node $B$ dominates a node $N$ if all paths from the entry to node $N$ pass through $B$. By this definition we can say that all blocks trivially dominate themselves.
+	\subsection{Data Flow Analysis}
+		\begin{tabularx}{1.2\textwidth} { 
+			| >{\raggedright\arraybackslash}X 
+			| >{\centering\arraybackslash}X 
+			| >{\raggedleft\arraybackslash}X | }
+		\hline
+		Domain & Set of all nodes of the Graph  \\
+		\hline
+		Direction & Forward\newline $Out(B)=f(In(B))$\newline $In(B)=\wedge Out(Prev(B))$  \\ 
+		\hline
+		Transfer function & $Out(B)=Gen(B)U(In(B)-Kill(B))$  \\
+		\hline
+		Meet operation & $\cap$  \\
+		\hline
+		Boundary Condition & $Out(Entry)=\{Entry\}$  \\
+		\hline
+		Initial Interior Points & $Out(B)=U$  \\
+		\hline
+	\end{tabularx}
+	\section{Constant Propagation}
+\end{document}

@@ -5,9 +5,9 @@ target triple = "x86_64-pc-linux-gnu"
 
 ; Function Attrs: noinline nounwind sspstrong uwtable
 define dso_local void @foo(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
-  %4 = add i32 %0, 2
+  %4 = add i32 %0, -3
   %5 = add i32 %4, 5
-  %6 = add i32 %5, %4
+  %6 = sub i32 %4, 10
   ret void
 }
 

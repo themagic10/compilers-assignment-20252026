@@ -1,3 +1,6 @@
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -22,6 +25,42 @@ using namespace llvm;
 
 namespace {
 
+typedef struct binopinfo {
+  unsigned int opcode;
+  Value *op0 = nullptr;
+  Value *op1 = nullptr;
+  bool op0_constant = false;
+  bool op1_constant = false;
+  int op0_int = 0;
+  int op1_int = 0;
+
+} binopinfo;
+
+// returns ret.opcode = unreachable if the opcode is not add or sub
+binopinfo getInstructionInfo(Instruction *i) {
+  binopinfo ret;
+
+  ret.opcode = i->getOpcode();
+  if (ret.opcode != Instruction::Add && ret.opcode != Instruction::Sub) {
+    ret.opcode = Instruction::Unreachable;
+    return ret;
+  }
+
+  ret.op0 = i->getOperand(0);
+  ret.op1 = i->getOperand(1);
+
+  if (ConstantInt *c = dyn_cast<ConstantInt>(ret.op0)) {
+    ret.op0_constant = true;
+    ret.op0_int = c->getSExtValue();
+  }
+  if (ConstantInt *c = dyn_cast<ConstantInt>(ret.op1)) {
+    ret.op1_constant = true;
+    ret.op1_int = c->getSExtValue();
+  }
+
+  return ret;
+}
+
 /*
   (x + k) + j -> x + h[=j+k]
   (x + k) - x -> k
@@ -32,6 +71,106 @@ namespace {
 
 
 */
+/*
+ONLY CALL THIS FUNCTION IF INSTRUCTION IS ADD OR SUB
+
+let k,j constant
+
+a = x + k
+b = a + j -> b = x + (k+j)
+---
+a = k - x
+b = a - j -> b = k-x-j = (k-j)-x
+---
+a = x - k
+b = a - j -> b = x - k - j
+
+a = x + k
+b = a - j -> b = x + k - j
+
+note that even though it seems like we're replacing instruction b we're actually
+modifying the constant operand in instruction a, dce will hit instruction b
+
+this is convinient but leads to a problem: let's say we have
+
+a = x+2;
+b = a + 5;
+c = b - 10;
+
+our code will correctly update a = x + 7 but c will be wrong since it became a
+user of a only afterwards
+
+we create a worklist of users and visited users for that
+
+*/
+void MultiInstOpt(Instruction *i) {
+  outs() << "currently optimizing instruction " << *i << "\n";
+  binopinfo bi = getInstructionInfo(i);
+
+  // we need <variable> <op> <const>
+  if (bi.op0_constant & bi.op1_constant) {
+    outs() << "invalid structure\n";
+    return;
+  }
+
+  SmallVector<User *> allusers = to_vector(i->users());
+  SmallVector<User *> visitedusers;
+
+  for (auto x = allusers.begin(); x != allusers.end(); ++x) {
+    if (llvm::is_contained(visitedusers, *x)) {
+      continue;
+    }
+    visitedusers.push_back(*x);
+    if (Instruction *newi = dyn_cast<Instruction>(*x)) {
+      if (newi->getOpcode() == Instruction::Add ||
+          newi->getOpcode() == Instruction::Sub) {
+        bi = getInstructionInfo(i); // we need to recalculate this...
+        int constoperand;
+        int constval;
+
+        if (bi.op0_constant) {
+          constval = bi.op0_int;
+          constoperand = 0;
+        } else {
+          constval = bi.op1_int;
+          constoperand = 1;
+        }
+        binopinfo bni = getInstructionInfo(newi);
+
+        // no need to check if both operands are constant since they're a user
+        // of i. we need to check if both are NOT constant, in this case we
+        // cannot do anything
+        if (!bni.op0_constant && !bni.op1_constant) {
+          outs() << "user invalid structure\n";
+          continue;
+        }
+
+        int constop;
+        int newconstval;
+        if (bni.op0_constant) {
+          constop = 0;
+          newconstval = bni.op0_int;
+        } else {
+          constop = 1;
+          newconstval = bni.op1_int;
+        }
+        int result;
+        if (bni.opcode == Instruction::Add) {
+          result = constval + newconstval;
+        } else {
+          result = constval - newconstval;
+        }
+        auto newconstoperand = ConstantInt::get(i->getType(), result, true);
+        for (auto futureusers : newi->users()) {
+          allusers.push_back(futureusers);
+        }
+        i->setOperand(constoperand, newconstoperand);
+        newi->replaceAllUsesWith(i);
+      }
+    }
+  }
+  return;
+}
 struct MultyInstructionOptimization
     : PassInfoMixin<MultyInstructionOptimization> {
 
@@ -41,67 +180,11 @@ struct MultyInstructionOptimization
            ++institer) {
         switch (institer->getOpcode()) {
         case Instruction::Add: {
-          Value *op0 = institer->getOperand(0);
-          Value *op1 = institer->getOperand(1);
-          bool is_op0_const, is_op1_const = false;
-
-          if (ConstantInt *c = dyn_cast<ConstantInt>(op0)) {
-            is_op0_const = true;
-          }
-          if (ConstantInt *c = dyn_cast<ConstantInt>(op1)) {
-            is_op1_const = true;
-          }
-
-          if (is_op0_const && is_op1_const) {
-            ConstantInt *c0 = dyn_cast<ConstantInt>(op0);
-            ConstantInt *c1 = dyn_cast<ConstantInt>(op0);
-            if (c0->isNegative() || c1->isNegative()) {
-              // signed
-              int64_t v0 = c0->getSExtValue();
-              int64_t v1 = c1->getSExtValue();
-              int64_t res = v0 + v1;
-              Value *vres =
-                  ConstantInt::get(Type::getInt64Ty(F.getContext()), res);
-              institer->replaceAllUsesWith(vres);
-            } else {
-              // unsigned
-              uint64_t v0 = c0->getZExtValue();
-              uint64_t v1 = c1->getZExtValue();
-              uint64_t res = v0 + v1;
-              Value *vres =
-                  ConstantInt::get(Type::getInt64Ty(F.getContext()), res);
-              institer->replaceAllUsesWith(vres);
-            }
-          } else { // y = x + k, look for y + j or y - x
-            // non constant operand
-            Value *target_var = (is_op1_const) ? op0 : op1;
-            for (auto futureinst : institer->users()) {
-              Instruction *i = dyn_cast<Instruction>(futureinst);
-              if (i != nullptr && i->getOpcode() == Instruction::Add) {
-                Value *otherop;
-                uint8_t otherop_pos = 0;
-                // we check the pointers
-                if (futureinst->getOperand(0) == target_var) {
-                  otherop_pos = 1;
-                } else {
-                  otherop_pos = 0;
-                }
-                otherop = futureinst->getOperand(otherop_pos);
-
-                // we only care if otherop is a constant or is -x
-              }
-            }
-          }
-
+          MultiInstOpt(&*institer);
           break;
         }
         case Instruction::Sub: {
-          break;
-        }
-        case Instruction::Mul: {
-          break;
-        }
-        case Instruction::UDiv: {
+          MultiInstOpt(&*institer);
           break;
         }
         default:
