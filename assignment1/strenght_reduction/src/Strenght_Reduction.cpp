@@ -101,7 +101,6 @@ reduction evaluate_reduction(reduction r, int val) {
     s.value = power;
     r.shifts.push_back(s);
 
-    // TODO: we should pass r by reference, not by copy, it's a waste of time...
     return evaluate_reduction(r, target);
   }
 }

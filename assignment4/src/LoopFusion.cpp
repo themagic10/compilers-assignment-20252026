@@ -103,7 +103,8 @@ bool areLoopAdjacent(Loop *li, Loop *lj) {
       return false;
     }
 
-    // TODO FINISH LEADSTO
+    // TODO could be improved with lead to but since we do run simplify loop
+    // there shouldn't be any need...
     if (li->getExitBlock() == lj->getLoopPreheader()) {
       return true;
     } else {
@@ -523,8 +524,6 @@ bool startingLoopCheck(Loop *l) {
   return l->isLoopSimplifyForm() && l->isInnermost() &&
          (l->getExitingBlock() != nullptr);
 }
-
-// TODO: we could add switch statements to point 6
 
 /* assumptions:
 1. each loop is in simple form

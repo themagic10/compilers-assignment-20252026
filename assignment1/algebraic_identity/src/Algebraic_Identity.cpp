@@ -172,6 +172,9 @@ struct AlgebraicIdentity : PassInfoMixin<AlgebraicIdentity> {
         case Instruction::SDiv:
           OptimizeDivision(targetinst);
           break;
+        case Instruction::UDiv:
+          OptimizeDivision(targetinst);
+          break;
 
         default:
           break;

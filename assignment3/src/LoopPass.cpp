@@ -64,8 +64,6 @@ bool IsInstructionInvariant(Instruction *i, Loop *l) {
   return true;
 }
 
-// TODO: does it guarantee that the instruction are fetched in order?
-// TODO: maybe use l->hasLoopInvariantOperands(const Instruction *I)??
 std::vector<Instruction *> GetLoopInvariantInst(Loop *l) {
   std::vector<Instruction *> r;
   for (auto bbiter : l->blocks()) {

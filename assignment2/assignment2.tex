@@ -1,27 +1,23 @@
 \documentclass{article}
 \usepackage{tabularx}
+\usepackage{graphicx}
+\graphicspath{ {./img/} }
 \begin{document}
 	\begin{titlepage}
 		\title{Compilers Assignment 2}
 		\author{Stefano Casolari 187572}
+		\date{July 14, 2026}
 		\maketitle
 	\end{titlepage}
 	\tableofcontents
 	\newpage
 	\section{Very Busy Expression}
+	\includegraphics[scale=0.5]{vbe}
 	\subsection{Definition}
 	An expression is considered to be \textbf{very busy} in a specific instance \textit{p} when said expression is evaluated on all path from p to the exit node without having its operands redefined along the way.
 	\subsection{Data Flow Analysis}
-	Backwards flow analysis proves efficient here. We need to use 
+	Backwards flow analysis proves efficient here since the expression must be evaluated on all paths to the exit. The meet operator is the intersection for the same reason
 	\newline\newline
-	
-	\begin{math}
-	In(B)=f(Out(B))\newline
-	In(B)=Use(B)U(Out(B)-Def(B))
-	\newline\newline
-	Out(B)=\wedge In(S(B))\newline
-	\wedge = \cap	
-	\end{math}\newline\newline
 	\begin{tabularx}{1.2\textwidth} { 
 			| >{\raggedright\arraybackslash}X 
 			| >{\centering\arraybackslash}X 
@@ -40,7 +36,43 @@
 		Initial Interior Points & $In(B)=U$  \\
 		\hline
 	\end{tabularx}
+	\newpage
+	\subsection{Example}
+	Since there aren't any loop in the example cfg a single iteration is sufficent
+	\begin{table}[h]
+		\centering
+		\begin{tabularx}{\textwidth}{|X|X|X|X|X|}
+			\hline
+			 & 1:In(B) & 1:Out(B) \\
+			\hline
+			BB1 (entry) & $b-a$ & $b-a$  \\
+			\hline
+			BB2 & $b-a$ & $b-a$  \\
+			\hline
+			BB3 & $a-b, b-a$ & $a-b$  \\
+			\hline
+			BB4 & $a-b$ & $\emptyset$  \\
+			\hline
+			BB5 & $b-a$ & $\emptyset$  \\
+			\hline
+			BB6 & $\emptyset$ & $a-b$  \\
+			\hline
+			BB7 & $a-b$ & $\emptyset$  \\
+			\hline
+			BB8 (exit) & $\emptyset$ & $\emptyset$  \\
+			\hline
+		\end{tabularx}
+		\caption{Very Busy Expression example table}
+	\end{table}
+	\newpage
+	
+
+
+	
+	
+	
 	\section{Dominator Analysis}
+	\includegraphics[scale=0.5]{da}
 	\subsection{Definition}
 	We say that a node $B$ dominates a node $N$ if all paths from the entry to node $N$ pass through $B$. By this definition we can say that all blocks trivially dominate themselves.
 	\subsection{Data Flow Analysis}
@@ -62,5 +94,116 @@
 		Initial Interior Points & $Out(B)=U$  \\
 		\hline
 	\end{tabularx}
+	\newpage
+	\subsection{Example}
+	Since there aren't any loop in the example cfg a single iteration is sufficent
+	\begin{table}[h]
+		\centering
+		\begin{tabularx}{\textwidth}{|X|X|X|X|X|}
+			\hline
+			& 1:In(B) & 1:Out(B) \\
+			\hline
+			$A$ (entry) & $\emptyset$ & $A$  \\
+			\hline
+			$B$ & $A$ & $A,B$  \\
+			\hline
+			$C$ & $A$ & $A,C$  \\
+			\hline
+			$D$ & $A,C$ & $A,C,D$  \\
+			\hline
+			$E$ & $A,C$ & $A,C,E$  \\
+			\hline
+			$F$ & $A,C$ & $A,C,F$  \\
+			\hline
+			$G$ (exit)& $A$ & $A,G$  \\
+			\hline
+		\end{tabularx}
+		\caption{Dominator Analysis example table}
+	\end{table}
+	\newpage
+	
+	
 	\section{Constant Propagation}
+	\includegraphics[scale=0.5]{const}
+	\subsection{Description}
+	Constant Propagation evaluates variables and expression in a given point of the cfg as rappresentation of a known value, a constant. This evaluation extends beyond the simple act of assigning a value to a variable, as that known variable can be used to evaluate others as constant (this is the propagation part).
+	\subsection{Data Flow Analysis}
+	Constant propagation can be described as a forward Data flow analysis. the meet operator is the intersection operator (since a variable has to be constant on all path to the node)\newline\newline
+	Note that we cannot use a simply array of bits to rappresent the values since at a given time a variable can be unknown. The easiest way to implement this is having as a domain a set of <variable, value> elements, where a variable can only be in one element. if a variable is not present in our set then its value is unknown.
+	\newline
+	\begin{tabularx}{1.2\textwidth} { 
+			| >{\raggedright\arraybackslash}X 
+			| >{\centering\arraybackslash}X 
+			| >{\raggedleft\arraybackslash}X | }
+		\hline
+		Domain & $\{(v,c)\}$:v variable of our cfg, c constant value   \\
+		\hline
+		Direction & Forward\newline $Out(B) = f(In(B))$\newline $In(B)=\wedge Out(Prev(B))$  \\
+		\hline
+		Transfer function & $Out(B)=Gen(B)U(In(B)-Kill(B))$  \\
+		\hline
+		Meet operation & $\cap$  \\
+		\hline
+		Boundary Condition & $Out(Entry)=\emptyset$  \\
+		\hline
+		Initial Interior Points & $Out(B)=U$  \\
+		\hline
+	\end{tabularx}
+	\newpage
+	\subsection{Example}
+	the result are the same from the second iteration onwards
+		\begin{table}[h]
+		\centering
+		\begin{tabularx}{\textwidth}{|X|X|X|X|X|}
+			\hline
+			& 1:In(B) & 1:Out(B) & 2:In(B) & 2:Out(B) \\
+			\hline
+			$BB1$ (entry) & $\emptyset$ & $\emptyset$ & $\emptyset$ & $\emptyset$  \\
+			\hline
+			$BB2$ k=2 & $\emptyset$ & $<k,2>$ & $\emptyset$ & $<k,2>$ \\
+			\hline
+			$BB3$ if & $<k,2>$ & $<k,2>$ & $<k,2>$ & $<k,2>$ \\
+			\hline
+			$BB4$ a=k+2 & $<k,2>$ & $<k,2>\newline<a,4>$ 
+						& $<k,2>$ & $<k,2>\newline<a,4>$ \\
+			\hline
+			$BB5$ x=5 & $<k,2>\newline<a,4>$ & $<k,2>\newline<a,4>\newline<x,5>$ 
+					& $<k,2>\newline<a,4>$ & $<k,2>\newline<a,4>\newline<x,5>$ \\
+			\hline
+			$BB6$ a=k*2 & $<k,2>$ & $<k,2>\newline<a,4>$ 
+						& $<k,2>$ & $<k,2>\newline<a,4>$ \\
+			\hline
+			$BB7$ x=8 & $<k,2>\newline<a,4>$ & $<k,2>\newline<a,4>\newline<x,8>$ 
+						& $<k,2>\newline<a,4>$ & $<k,2>\newline<a,4>\newline<x,8>$ \\
+			\hline
+			$BB8$ k=a & $<k,2>\newline<a,4>$ & $<k,4>\newline<a,4>$ 
+						& $<k,2>\newline<a,4>$ & $<k,4>\newline<a,4>$ \\
+			\hline
+			$BB9$ while & $<k,2>\newline<a,4>$ & $<k,2>\newline<a,4>$ 
+						& $<a,4>$ & $<a,4>$ \\
+			\hline
+			$BB10$ b=2 & $<k,2>\newline<a,4>$ & $<k,2>\newline<a,4>\newline<b,2>$ 
+						& $<a,4>$ & $<a,4>\newline<b,2>$ \\
+			\hline
+			$BB11$ x=a+k & $<k,2>\newline<a,4>\newline<b,2>$ & $<k,2>\newline<a,4>\newline<b,2>\newline<x,6>$ 
+			& $<a,4>\newline<b,2>$ & $<a,4>\newline<b,2>$ \\
+			\hline
+			$BB12$ y=a*b & $<k,2>\newline<a,4>\newline<b,2>\newline<x,6>$ 
+			& $<k,2>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ 
+			& $<a,4>\newline<b,2>$ & $<a,4>\newline<b,2>\newline<y,8>$ \\
+			\hline
+			$BB13$ k++ & $<k,2>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ 
+			& $<k,3>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ 
+			& $<a,4>\newline<b,2>\newline<y,8>$ & $<a,4>\newline<b,2>\newline<y,8>$ \\
+			\hline
+			$BB14$ print(a+x) & $<k,3>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ & $<k,3>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ 
+			& $<a,4>\newline<b,2>\newline<y,8>$ & $<a,4>\newline<b,2>\newline<y,8>?$ \\
+			\hline
+			$BB15$ exit & $<k,3>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ & 
+			$<k,3>\newline<a,4>\newline<b,2>\newline<x,6>\newline<y,8>$ 
+			& $<a,4>\newline<b,2>\newline<y,8>$ & $<a,4>\newline<b,2>\newline<y,8>$ \\
+			\hline
+		\end{tabularx}
+		\caption{Constant Propagation example table}
+	\end{table}
 \end{document}
